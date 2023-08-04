@@ -60,8 +60,8 @@ def process_bytes(byteBuffer):
     if byteBufferLength > 16:
         # Check for all possible locations of the magic word
         possibleLocs = np.where(byteBuffer == magicWord[0])[0]
-        if len(possibleLocs) > 0:
-            print("possibleLocs>>", possibleLocs)
+        # if len(possibleLocs) > 0:
+        #    print("possibleLocs>>", possibleLocs)
 
         # Confirm that is the beginning of the magic word and store the index in startIdx
         startIdx = []
@@ -146,6 +146,7 @@ def process_bytes(byteBuffer):
                 # Check the header of the TLV message
                 tlv_type = np.matmul(byteBuffer[idX:idX + 4], word)
                 idX += 4
+                print("tlv_type == ", tlv_type)
                 if tlv_type == MMWDEMO_UART_MSG_POINT_CLOUD_2D:
                     print("byteBuffer[idX:idX + 4] ==", byteBuffer[idX:idX + 4])
                 tlv_length = np.matmul(byteBuffer[idX:idX + 4], word)

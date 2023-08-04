@@ -2,14 +2,21 @@ import serial
 import time
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
+# from pyqtgraph.Qt import QtGui
+from PyQt5 import QtWidgets
 
 # Change the configuration file name
-configFileName = 'mmw_pplcount_demo_default.cfg'
+#configFileName = 'mmw_pplcount_demo_default.cfg'
+configFileName = 'profile_2023_08_02T11_35_33_607.cfg'
 CLIport = {}
 Dataport = {}
 byteBuffer = np.zeros(2**15,dtype = 'uint8')
 byteBufferLength = 0;
+
+
+import os
+script_dir = os.path.dirname(__file__)
+configFileName = os.path.join(script_dir, configFileName)
 
 
 # ------------------------------------------------------------------
@@ -23,12 +30,12 @@ def serialConfig(configFileName):
     # Open the serial ports for the configuration and the data ports
     
     # Raspberry pi
-    CLIport = serial.Serial('/dev/ttyACM0', 115200)
-    Dataport = serial.Serial('/dev/ttyACM1', 921600)
+    #CLIport = serial.Serial('/dev/ttyACM0', 115200)
+    #Dataport = serial.Serial('/dev/ttyACM1', 921600)
     
     # Windows
-    #CLIport = serial.Serial('COM3', 115200)
-    #Dataport = serial.Serial('COM4', 921600)
+    CLIport = serial.Serial('COM13', 115200)
+    Dataport = serial.Serial('COM12', 921600)
 
     # Read the configuration file and send it to the board
     config = [line.rstrip('\r\n') for line in open(configFileName)]
@@ -95,7 +102,7 @@ def parseConfigFile(configFileName):
 # ------------------------------------------------------------------
 
 # Funtion to read and parse the incoming data
-def readAndParseData16xx(Dataport, configParameters):
+def readAndParseData16xx(Dataport: serial.Serial, configParameters):
     global byteBuffer, byteBufferLength
     
     # Constants
@@ -118,7 +125,12 @@ def readAndParseData16xx(Dataport, configParameters):
     targetObj = {}
     pointObj = {}
     
-    readBuffer = Dataport.read(Dataport.in_waiting)
+    #readBuffer = Dataport.read(Dataport.in_waiting)
+    readBuffer = b''
+    while Dataport.inWaiting()>0:
+        readBuffer += Dataport.read(Dataport.in_waiting)
+
+    #print(readBuffer)
     byteVec = np.frombuffer(readBuffer, dtype = 'uint8')
     byteCount = len(byteVec)
     
@@ -215,6 +227,8 @@ def readAndParseData16xx(Dataport, configParameters):
                 # Check the header of the TLV message
                 tlv_type = np.matmul(byteBuffer[idX:idX + 4], word)
                 idX += 4
+                if tlv_type == MMWDEMO_UART_MSG_POINT_CLOUD_2D:
+                    print("byteBuffer[idX:idX + 4] ==", byteBuffer[idX:idX + 4])
                 tlv_length = np.matmul(byteBuffer[idX:idX + 4], word)
                 idX += 4
             except:
@@ -226,6 +240,7 @@ def readAndParseData16xx(Dataport, configParameters):
                 word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
     
                 # Calculate the number of detected points
+                print("tlv_length>>", tlv_length)
                 numInputPoints = (tlv_length - tlvHeaderLengthInBytes) // pointLengthInBytes
     
                 # Initialize the arrays
@@ -313,6 +328,7 @@ def readAndParseData16xx(Dataport, configParameters):
                              "EC": EC, "G": G, "numTargets":numTargetPoints}
                 
                 targetDetected = 1
+                print(targetDetected)
     
             elif tlv_type == MMWDEMO_UART_MSG_TARGET_INDEX_2D:
                 # Calculate the length of the index message
@@ -339,7 +355,7 @@ def readAndParseData16xx(Dataport, configParameters):
 
 # Funtion to update the data and display in the plot
 def update():
-     
+    
     dataOk = 0
     targetDetected = 0
     global targetObj
@@ -349,6 +365,7 @@ def update():
       
     # Read and parse the received data
     dataOk, targetDetected, frameNumber, targetObj, pointObj = readAndParseData16xx(Dataport, configParameters)
+    #print(dataOk, targetDetected, frameNumber, targetObj, pointObj)
     
     if targetDetected:
         print(targetObj)
@@ -356,17 +373,51 @@ def update():
         x = -targetObj["posX"]
         y = targetObj["posY"]
         s2.setData(x,y)
-        QtGui.QApplication.processEvents()
+        QtWidgets.QApplication.processEvents()
         
     if dataOk: 
         x = -pointObj["range"]*np.sin(pointObj["azimuth"])
         y = pointObj["range"]*np.cos(pointObj["azimuth"])
         
         s1.setData(x,y)
-        QtGui.QApplication.processEvents()
+        QtWidgets.QApplication.processEvents()
+
+    plot.setRange(xRange=[min(x, default=0), max(x, default=100)], yRange=[min(y, default=0), max(y, default=100)])
     
     return dataOk
 
+import sys
+def show_test_graph():
+    # Create the application and main window
+    app = QtWidgets.QApplication(sys.argv)
+    window = QtWidgets.QMainWindow()
+    window.setWindowTitle("Simple Test Graph")
+
+    # Create a container widget for the graph
+    central_widget = QtWidgets.QWidget()
+    window.setCentralWidget(central_widget)
+
+    # Create a vertical layout for the container widget
+    layout = QtWidgets.QVBoxLayout(central_widget)
+
+    # Create a widget to hold the graph
+    graph_widget = pg.PlotWidget(background="w")
+    layout.addWidget(graph_widget)
+
+    # Generate some sample data
+    x = [0, 1, 2, 3, 4, 5]
+    y = [0, 1, 4, 9, 16, 25]
+
+    # Plot the data
+    graph_widget.plot(x, y, pen='b', symbol='o', symbolSize=8, symbolPen='b', symbolBrush='r')
+
+    # Show the main window
+    window.show()
+
+    # Start the application event loop
+    sys.exit(app.exec_())
+
+#show_test_graph()
 
 # -------------------------    MAIN   -----------------------------------------  
 
@@ -377,26 +428,39 @@ CLIport, Dataport = serialConfig(configFileName)
 configParameters = parseConfigFile(configFileName)
 
 # START QtAPPfor the plot
-app = QtGui.QApplication([])
+app = QtWidgets.QApplication([])
 
 # Set the plot 
 pg.setConfigOption('background','w')
-win = pg.GraphicsWindow(title="2D scatter plot")
-p = win.addPlot()
+window = QtWidgets.QMainWindow()
+window.setWindowTitle("2D scatter plot")
+# Create a container widget for the graph
+central_widget = QtWidgets.QWidget()
+window.setCentralWidget(central_widget)
+#win = pg.GraphicsLayoutWidget(title="2D scatter plot")
+plot = pg.PlotWidget(background="w")
+# Create a vertical layout for the container widget
+layout = QtWidgets.QVBoxLayout(central_widget)
+layout.addWidget(plot)
+
+#p = win.addPlot()
+p = plot
 p.setXRange(-0.5,0.5)
 p.setYRange(0,6)
 p.setLabel('left',text = 'Y position (m)')
 p.setLabel('bottom', text= 'X position (m)')
 s1 = p.plot([],[],pen=None,symbol='o')
 s2 = p.plot([],[],pen=(0,0,255),symbol='star')
-    
-   
+
+window.show()
+
+
 # Main loop 
 targetObj = {}  
 pointObj = {}
 frameData = {}    
 currentIndex = 0
-while True:
+def loop_step():
     try:
         # Update the data and check if the data is okay
         dataOk = update()
@@ -406,12 +470,23 @@ while True:
             frameData[currentIndex] = targetObj
             currentIndex += 1
         
-        time.sleep(0.033) # Sampling frequency of 30 Hz
-        
+        #time.sleep(0.033) # Sampling frequency of 30 Hz
+
     # Stop the program and close everything if Ctrl + c is pressed
     except KeyboardInterrupt:
+        #print("currentIndex =", currentIndex)
+        #print("total frames =", len(frameData))
         CLIport.write(('sensorStop\n').encode())
         CLIport.close()
         Dataport.close()
-        win.close()
-        break
+        window.close()
+        return
+
+from PyQt5.QtCore import QTimer
+# Set up the QTimer to trigger the update_plot function every 100 milliseconds
+update_timer = QTimer()
+update_timer.timeout.connect(loop_step)
+update_timer.start(33)  # Update the plot every 100 milliseconds (adjust this interval as needed)
+
+# Start the application event loop
+sys.exit(app.exec_())

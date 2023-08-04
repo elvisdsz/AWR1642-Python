@@ -67,7 +67,7 @@ def process_bytes(byteBuffer):
         startIdx = []
         for loc in possibleLocs:
             check = byteBuffer[loc:loc + 8]
-            if np.all(check == magicWord):
+            if len(check)==8 and np.all(check == magicWord):
                 startIdx.append(loc)
 
         # Check that startIdx is not empty
@@ -284,12 +284,21 @@ configFilePath = os.path.join(script_dir, cfg_filename)
 cliport, dataport = serialConfig(configFilePath)
 
 
-filename = "D:\\Projects\\radar\\test_files\\awr1642_data_out.txt"
-rec_duration = 10
+filename = "D:\\HE\\soton\\acad\\MScProject\\radar\\ti\\tests\\py_rec\\awr1642_data_out.txt"
+rec_duration = 10 # seconds
+
 start_time = time.time()
+max_time = start_time + rec_duration
+sensor_stopped = False
 try:
     with open(filename, "wb") as f:
+        print("Recording to file >> ", filename)
         while True:
+            if (not sensor_stopped) and time.time() > max_time:
+                print("Time's up! -- sensorStop")
+                cliport.write(("sensorStop"+'\n').encode())
+                sensor_stopped = True
+
             # Read data from the serial port
             # data = dataport.readline().decode('utf-8').strip()
             # data = int(dataport.readline().decode('utf-8'))
@@ -301,11 +310,20 @@ try:
                 # print("Received data from serial port: ", data)
                 # Give the device time to send data again
                 #time.sleep(0.5)
-                #f.write(data)
-                process_bytes(data)
+                print(data)
+                f.write(data)
+                # *** V uncomment this to process
+                # process_bytes(data)
+
+            if time.time() > max_time+2 and not data:
+                print("Finishing recording . . .")
+                break
+
 finally:
-    print("sensorStop")
-    cliport.write(("sensorStop"+'\n').encode())
+    print("Finished recording for ", (time.time()-start_time), " seconds -- saved to "+filename)
+    if not sensor_stopped:
+        print("sensorStop")
+        cliport.write(("sensorStop"+'\n').encode())
     print("Closing the serial port.")
     dataport.close()
     cliport.close()   
